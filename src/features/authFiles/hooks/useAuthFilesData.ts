@@ -31,6 +31,7 @@ export type UseAuthFilesDataResult = {
   uploading: boolean;
   deleting: string | null;
   deletingAll: boolean;
+  refreshingToken: Record<string, boolean>;
   statusUpdating: Record<string, boolean>;
   batchStatusUpdating: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -40,6 +41,7 @@ export type UseAuthFilesDataResult = {
   handleDelete: (name: string) => void;
   handleDeleteAll: (options: DeleteAllOptions) => void;
   handleDownload: (name: string) => Promise<void>;
+  handleRefreshToken: (item: AuthFileItem) => Promise<void>;
   handleStatusToggle: (item: AuthFileItem, enabled: boolean) => Promise<void>;
   toggleSelect: (name: string) => void;
   selectAllVisible: (visibleFiles: AuthFileItem[]) => void;
@@ -65,12 +67,14 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [refreshingToken, setRefreshingToken] = useState<Record<string, boolean>>({});
   const [statusUpdating, setStatusUpdating] = useState<Record<string, boolean>>({});
   const [batchStatusUpdating, setBatchStatusUpdating] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const batchStatusPendingRef = useRef(false);
+  const refreshTokenPendingRef = useRef(new Set<string>());
   const selectionCount = selectedFiles.size;
   const toggleSelect = useCallback((name: string) => {
     setSelectedFiles((prev) => {
@@ -120,13 +124,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
   }, []);
 
   const applyDeletedFiles = useCallback((names: string[]) => {
-    const deletedNames = Array.from(
-      new Set(
-        names
-          .map((name) => name.trim())
-          .filter(Boolean)
-      )
-    );
+    const deletedNames = Array.from(new Set(names.map((name) => name.trim()).filter(Boolean)));
     if (deletedNames.length === 0) return;
 
     const deletedSet = new Set(deletedNames);
@@ -234,9 +232,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
         }
 
         if (result.failed.length > 0) {
-          const details = result.failed
-            .map((item) => `${item.name}: ${item.error}`)
-            .join('; ');
+          const details = result.failed.map((item) => `${item.name}: ${item.error}`).join('; ');
           showNotification(`${t('notification.upload_failed')}: ${details}`, 'error');
         }
       } catch (err: unknown) {
@@ -336,9 +332,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
                 return;
               }
 
-              const result = await authFilesApi.deleteFiles(
-                filesToDelete.map((file) => file.name)
-              );
+              const result = await authFilesApi.deleteFiles(filesToDelete.map((file) => file.name));
               const success = result.deleted;
               const failed = result.failed.length;
 
@@ -425,6 +419,46 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
       }
     },
     [showNotification, t]
+  );
+
+  const handleRefreshToken = useCallback(
+    async (item: AuthFileItem) => {
+      const name = item.name;
+      if (!name || refreshTokenPendingRef.current.has(name)) return;
+
+      refreshTokenPendingRef.current.add(name);
+      setRefreshingToken((prev) => ({ ...prev, [name]: true }));
+      try {
+        const res = await authFilesApi.refreshToken(item);
+        await loadFiles();
+        await refreshKeyStats();
+        showNotification(
+          res.refresh_token_rotated
+            ? t('auth_files.refresh_rt_success_rotated', {
+                defaultValue: 'Refresh token rotated and saved',
+              })
+            : t('auth_files.refresh_rt_success', {
+                defaultValue: 'Token refreshed and saved',
+              }),
+          'success'
+        );
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : '';
+        showNotification(
+          `${t('auth_files.refresh_rt_failed', { defaultValue: 'Refresh RT failed' })}: ${errorMessage}`,
+          'error'
+        );
+      } finally {
+        setRefreshingToken((prev) => {
+          if (!prev[name]) return prev;
+          const next = { ...prev };
+          delete next[name];
+          return next;
+        });
+        refreshTokenPendingRef.current.delete(name);
+      }
+    },
+    [loadFiles, refreshKeyStats, showNotification, t]
   );
 
   const handleStatusToggle = useCallback(
@@ -533,7 +567,10 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
         );
 
         if (failCount === 0) {
-          showNotification(t('auth_files.batch_status_success', { count: successCount }), 'success');
+          showNotification(
+            t('auth_files.batch_status_success', { count: successCount }),
+            'success'
+          );
         } else {
           showNotification(
             t('auth_files.batch_status_partial', { success: successCount, failed: failCount }),
@@ -643,6 +680,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     uploading,
     deleting,
     deletingAll,
+    refreshingToken,
     statusUpdating,
     batchStatusUpdating,
     fileInputRef,
@@ -652,6 +690,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     handleDelete,
     handleDeleteAll,
     handleDownload,
+    handleRefreshToken,
     handleStatusToggle,
     toggleSelect,
     selectAllVisible,

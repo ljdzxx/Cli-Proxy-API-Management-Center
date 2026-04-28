@@ -7,6 +7,7 @@ import {
   IconDownload,
   IconInfo,
   IconModelCluster,
+  IconRefreshCw,
   IconSettings,
   IconTrash2,
 } from '@/components/ui/icons';
@@ -41,12 +42,14 @@ export type AuthFileCardProps = {
   resolvedTheme: ResolvedTheme;
   disableControls: boolean;
   deleting: string | null;
+  refreshingToken: Record<string, boolean>;
   statusUpdating: Record<string, boolean>;
   quotaFilterType: QuotaProviderType | null;
   keyStats: KeyStats;
   statusBarCache: Map<string, AuthFileStatusBarData>;
   onShowModels: (file: AuthFileItem) => void;
   onDownload: (name: string) => void;
+  onRefreshToken: (file: AuthFileItem) => void;
   onOpenPrefixProxyEditor: (file: AuthFileItem) => void;
   onDelete: (name: string) => void;
   onToggleStatus: (file: AuthFileItem, enabled: boolean) => void;
@@ -68,12 +71,14 @@ export function AuthFileCard(props: AuthFileCardProps) {
     resolvedTheme,
     disableControls,
     deleting,
+    refreshingToken,
     statusUpdating,
     quotaFilterType,
     keyStats,
     statusBarCache,
     onShowModels,
     onDownload,
+    onRefreshToken,
     onOpenPrefixProxyEditor,
     onDelete,
     onToggleStatus,
@@ -83,6 +88,8 @@ export function AuthFileCard(props: AuthFileCardProps) {
   const fileStats = resolveAuthFileStats(file, keyStats);
   const isRuntimeOnly = isRuntimeOnlyAuthFile(file);
   const isAistudio = (file.type || '').toLowerCase() === 'aistudio';
+  const isCodex = ((file.type || file.provider || '') as string).toLowerCase() === 'codex';
+  const isRefreshingToken = refreshingToken[file.name] === true;
   const showModelsButton = !isRuntimeOnly || isAistudio;
   const typeColor = getTypeColor(file.type || 'unknown', resolvedTheme);
   const typeLabel = getTypeLabel(t, file.type || 'unknown');
@@ -272,6 +279,22 @@ export function AuthFileCard(props: AuthFileCardProps) {
               )}
               {!isRuntimeOnly && (
                 <div className={styles.cardUtilityActions}>
+                  {isCodex && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => onRefreshToken(file)}
+                      className={styles.iconButton}
+                      title={t('auth_files.refresh_rt_button', { defaultValue: 'Refresh RT' })}
+                      disabled={disableControls || isRefreshingToken}
+                    >
+                      {isRefreshingToken ? (
+                        <LoadingSpinner size={14} />
+                      ) : (
+                        <IconRefreshCw className={styles.actionIcon} size={16} />
+                      )}
+                    </Button>
+                  )}
                   <Button
                     variant="secondary"
                     size="sm"
