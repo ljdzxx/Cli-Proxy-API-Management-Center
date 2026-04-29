@@ -405,6 +405,44 @@ export type AuthFileRefreshTokenResponse = {
   access_token_updated?: boolean;
 };
 
+export type AuthFileRefreshTokenJob = {
+  id: string;
+  status: 'running' | 'completed' | 'partial' | 'failed' | string;
+  started_at?: string;
+  finished_at?: string;
+  total: number;
+  refreshed: number;
+  skipped: number;
+  failed: number;
+  failures?: { name: string; error: string }[];
+};
+
+export type AuthFileRefreshAllTokenResponse = {
+  status: string;
+  job_id: string;
+  job?: AuthFileRefreshTokenJob;
+};
+
+export type AuthFileRefreshTokenLockResponse = {
+  status: string;
+  id?: string;
+  name?: string;
+  auth_index?: string;
+  provider?: string;
+  locked: boolean;
+};
+
+const authFileIdentityPayload = (file: AuthFileEntry) => ({
+  name: file.name,
+  id: typeof file.id === 'string' ? file.id : undefined,
+  auth_index:
+    typeof file.authIndex === 'string' || typeof file.authIndex === 'number'
+      ? String(file.authIndex)
+      : typeof file['auth_index'] === 'string' || typeof file['auth_index'] === 'number'
+        ? String(file['auth_index'])
+        : undefined,
+});
+
 export const authFilesApi = {
   list: async () => dedupeAuthFilesResponse(await apiClient.get<AuthFilesResponse>('/auth-files')),
 
@@ -412,15 +450,23 @@ export const authFilesApi = {
     apiClient.patch<AuthFileStatusResponse>('/auth-files/status', { name, disabled }),
 
   refreshToken: (file: AuthFileEntry) =>
-    apiClient.post<AuthFileRefreshTokenResponse>('/auth-files/refresh-token', {
-      name: file.name,
-      id: typeof file.id === 'string' ? file.id : undefined,
-      auth_index:
-        typeof file.authIndex === 'string' || typeof file.authIndex === 'number'
-          ? String(file.authIndex)
-          : typeof file['auth_index'] === 'string' || typeof file['auth_index'] === 'number'
-            ? String(file['auth_index'])
-            : undefined,
+    apiClient.post<AuthFileRefreshTokenResponse>(
+      '/auth-files/refresh-token',
+      authFileIdentityPayload(file)
+    ),
+
+  refreshAllTokens: () =>
+    apiClient.post<AuthFileRefreshAllTokenResponse>('/auth-files/refresh-token/all'),
+
+  getRefreshTokenJob: (jobId: string) =>
+    apiClient.get<AuthFileRefreshTokenJob>(
+      `/auth-files/refresh-token/jobs/${encodeURIComponent(jobId)}`
+    ),
+
+  setRefreshTokenLock: (file: AuthFileEntry, locked: boolean) =>
+    apiClient.patch<AuthFileRefreshTokenLockResponse>('/auth-files/refresh-token-lock', {
+      ...authFileIdentityPayload(file),
+      locked,
     }),
 
   uploadFiles: async (files: File[]): Promise<AuthFileBatchUploadResult> => {

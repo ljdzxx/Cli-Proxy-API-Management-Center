@@ -32,6 +32,8 @@ export type UseAuthFilesDataResult = {
   deleting: string | null;
   deletingAll: boolean;
   refreshingToken: Record<string, boolean>;
+  refreshingAllTokens: boolean;
+  lockUpdating: Record<string, boolean>;
   statusUpdating: Record<string, boolean>;
   batchStatusUpdating: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -42,6 +44,8 @@ export type UseAuthFilesDataResult = {
   handleDeleteAll: (options: DeleteAllOptions) => void;
   handleDownload: (name: string) => Promise<void>;
   handleRefreshToken: (item: AuthFileItem) => Promise<void>;
+  handleRefreshAllTokens: () => Promise<void>;
+  handleRefreshTokenLockToggle: (item: AuthFileItem, locked: boolean) => Promise<void>;
   handleStatusToggle: (item: AuthFileItem, enabled: boolean) => Promise<void>;
   toggleSelect: (name: string) => void;
   selectAllVisible: (visibleFiles: AuthFileItem[]) => void;
@@ -68,6 +72,8 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
   const [refreshingToken, setRefreshingToken] = useState<Record<string, boolean>>({});
+  const [refreshingAllTokens, setRefreshingAllTokens] = useState(false);
+  const [lockUpdating, setLockUpdating] = useState<Record<string, boolean>>({});
   const [statusUpdating, setStatusUpdating] = useState<Record<string, boolean>>({});
   const [batchStatusUpdating, setBatchStatusUpdating] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
@@ -75,7 +81,13 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const batchStatusPendingRef = useRef(false);
   const refreshTokenPendingRef = useRef(new Set<string>());
+  const refreshAllTokenPendingRef = useRef(false);
   const selectionCount = selectedFiles.size;
+
+  const wait = useCallback(
+    (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms)),
+    []
+  );
   const toggleSelect = useCallback((name: string) => {
     setSelectedFiles((prev) => {
       const next = new Set(prev);
@@ -425,6 +437,13 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     async (item: AuthFileItem) => {
       const name = item.name;
       if (!name || refreshTokenPendingRef.current.has(name)) return;
+      if (item.refresh_token_locked === true || item.refreshTokenLocked === true) {
+        showNotification(
+          t('auth_files.refresh_rt_locked', { defaultValue: 'Refresh token is locked' }),
+          'warning'
+        );
+        return;
+      }
 
       refreshTokenPendingRef.current.add(name);
       setRefreshingToken((prev) => ({ ...prev, [name]: true }));
@@ -459,6 +478,114 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
       }
     },
     [loadFiles, refreshKeyStats, showNotification, t]
+  );
+
+  const handleRefreshAllTokens = useCallback(async () => {
+    if (refreshAllTokenPendingRef.current) return;
+    refreshAllTokenPendingRef.current = true;
+    setRefreshingAllTokens(true);
+    try {
+      const started = await authFilesApi.refreshAllTokens();
+      let job = started.job;
+      const jobId = started.job_id || job?.id;
+      if (!jobId) {
+        throw new Error('missing refresh job id');
+      }
+
+      showNotification(
+        t('auth_files.refresh_all_rt_started', { defaultValue: 'Refresh all RT started' }),
+        'success'
+      );
+
+      for (;;) {
+        job = await authFilesApi.getRefreshTokenJob(jobId);
+        if (job.status !== 'running') break;
+        await wait(1500);
+      }
+      if (!job) {
+        throw new Error('missing refresh job result');
+      }
+
+      await loadFiles();
+      await refreshKeyStats();
+
+      showNotification(
+        t('auth_files.refresh_all_rt_done', {
+          defaultValue:
+            'Refresh all RT finished: {{refreshed}} refreshed, {{skipped}} skipped, {{failed}} failed',
+          refreshed: job.refreshed,
+          skipped: job.skipped,
+          failed: job.failed,
+        }),
+        job.failed > 0 ? 'warning' : 'success'
+      );
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '';
+      showNotification(
+        `${t('auth_files.refresh_all_rt_failed', { defaultValue: 'Refresh all RT failed' })}: ${errorMessage}`,
+        'error'
+      );
+    } finally {
+      setRefreshingAllTokens(false);
+      refreshAllTokenPendingRef.current = false;
+    }
+  }, [loadFiles, refreshKeyStats, showNotification, t, wait]);
+
+  const handleRefreshTokenLockToggle = useCallback(
+    async (item: AuthFileItem, locked: boolean) => {
+      const name = item.name;
+      if (!name) return;
+      const previousLocked = item.refresh_token_locked === true || item.refreshTokenLocked === true;
+      setLockUpdating((prev) => ({ ...prev, [name]: true }));
+      setFiles((prev) =>
+        prev.map((file) =>
+          file.name === name
+            ? { ...file, refresh_token_locked: locked, refreshTokenLocked: locked }
+            : file
+        )
+      );
+
+      try {
+        const res = await authFilesApi.setRefreshTokenLock(item, locked);
+        setFiles((prev) =>
+          prev.map((file) =>
+            file.name === name
+              ? { ...file, refresh_token_locked: res.locked, refreshTokenLocked: res.locked }
+              : file
+          )
+        );
+        showNotification(
+          locked
+            ? t('auth_files.refresh_rt_lock_success', { defaultValue: 'Refresh token locked' })
+            : t('auth_files.refresh_rt_unlock_success', {
+                defaultValue: 'Refresh token unlocked',
+              }),
+          'success'
+        );
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : '';
+        setFiles((prev) =>
+          prev.map((file) =>
+            file.name === name
+              ? {
+                  ...file,
+                  refresh_token_locked: previousLocked,
+                  refreshTokenLocked: previousLocked,
+                }
+              : file
+          )
+        );
+        showNotification(`${t('notification.update_failed')}: ${errorMessage}`, 'error');
+      } finally {
+        setLockUpdating((prev) => {
+          if (!prev[name]) return prev;
+          const next = { ...prev };
+          delete next[name];
+          return next;
+        });
+      }
+    },
+    [showNotification, t]
   );
 
   const handleStatusToggle = useCallback(
@@ -681,6 +808,8 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     deleting,
     deletingAll,
     refreshingToken,
+    refreshingAllTokens,
+    lockUpdating,
     statusUpdating,
     batchStatusUpdating,
     fileInputRef,
@@ -691,6 +820,8 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     handleDeleteAll,
     handleDownload,
     handleRefreshToken,
+    handleRefreshAllTokens,
+    handleRefreshTokenLockToggle,
     handleStatusToggle,
     toggleSelect,
     selectAllVisible,

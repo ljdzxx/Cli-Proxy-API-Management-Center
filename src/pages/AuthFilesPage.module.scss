@@ -1477,6 +1477,41 @@
   gap: 0;
 }
 
+.refreshTokenLockButtonLocked:global(.btn.btn-sm) {
+  color: #dc2626;
+  border-color: color-mix(in srgb, #dc2626 42%, var(--border-color));
+  background: color-mix(in srgb, #fee2e2 54%, transparent);
+
+  &:hover:not(:disabled) {
+    color: #b91c1c;
+    border-color: color-mix(in srgb, #dc2626 64%, var(--border-color));
+    background: color-mix(in srgb, #fecaca 62%, transparent);
+  }
+}
+
+.refreshTokenLockButtonUnlocked:global(.btn.btn-sm) {
+  color: #16a34a;
+  border-color: color-mix(in srgb, #16a34a 42%, var(--border-color));
+  background: color-mix(in srgb, #dcfce7 54%, transparent);
+
+  &:hover:not(:disabled) {
+    color: #15803d;
+    border-color: color-mix(in srgb, #16a34a 64%, var(--border-color));
+    background: color-mix(in srgb, #bbf7d0 62%, transparent);
+  }
+}
+
+:global([data-theme='dark']) .refreshTokenLockButtonLocked:global(.btn.btn-sm) {
+  color: #f87171;
+  border-color: color-mix(in srgb, #ef4444 46%, var(--border-color));
+  background: color-mix(in srgb, #7f1d1d 36%, transparent);
+}
+
+:global([data-theme='dark']) .refreshTokenLockButtonUnlocked:global(.btn.btn-sm) {
+  color: #4ade80;
+  border-color: color-mix(in srgb, #22c55e 46%, var(--border-color));
+  background: color-mix(in srgb, #14532d 36%, transparent);
+}
 .actionIcon {
   display: block;
 }

@@ -66,6 +66,20 @@ npm run build
 
 这与 Web UI 中"API Keys"页面管理的 `api-keys` 不同：后者是代理对外接口（如 OpenAI 兼容接口）给客户端使用的鉴权 key。
 
+### 安装gh并授权登录
+
+PowerShell 里用 winget 安装：
+```powershell
+winget install --id GitHub.cli -e
+gh auth login
+```
+
+### 发布Release
+```bash
+TAG="panel-$(date +%Y%m%d%H%M%S)"
+gh release create "$TAG" dist/management.html     --repo ljdzxx/Cli-Proxy-API-Management-Center     --title "$TAG"     --notes "Update management panel" 
+```
+
 ### 远程管理
 
 当你从非 localhost 的浏览器访问时，服务端通常需要开启远程管理（例如 `allow-remote-management: true`）。  

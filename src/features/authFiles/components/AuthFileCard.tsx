@@ -6,10 +6,12 @@ import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import {
   IconDownload,
   IconInfo,
+  IconLock,
   IconModelCluster,
   IconRefreshCw,
   IconSettings,
   IconTrash2,
+  IconUnlock,
 } from '@/components/ui/icons';
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
 import type { AuthFileItem } from '@/types';
@@ -43,6 +45,7 @@ export type AuthFileCardProps = {
   disableControls: boolean;
   deleting: string | null;
   refreshingToken: Record<string, boolean>;
+  lockUpdating: Record<string, boolean>;
   statusUpdating: Record<string, boolean>;
   quotaFilterType: QuotaProviderType | null;
   keyStats: KeyStats;
@@ -50,6 +53,7 @@ export type AuthFileCardProps = {
   onShowModels: (file: AuthFileItem) => void;
   onDownload: (name: string) => void;
   onRefreshToken: (file: AuthFileItem) => void;
+  onToggleRefreshTokenLock: (file: AuthFileItem, locked: boolean) => void;
   onOpenPrefixProxyEditor: (file: AuthFileItem) => void;
   onDelete: (name: string) => void;
   onToggleStatus: (file: AuthFileItem, enabled: boolean) => void;
@@ -72,6 +76,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
     disableControls,
     deleting,
     refreshingToken,
+    lockUpdating,
     statusUpdating,
     quotaFilterType,
     keyStats,
@@ -79,6 +84,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
     onShowModels,
     onDownload,
     onRefreshToken,
+    onToggleRefreshTokenLock,
     onOpenPrefixProxyEditor,
     onDelete,
     onToggleStatus,
@@ -90,6 +96,8 @@ export function AuthFileCard(props: AuthFileCardProps) {
   const isAistudio = (file.type || '').toLowerCase() === 'aistudio';
   const isCodex = ((file.type || file.provider || '') as string).toLowerCase() === 'codex';
   const isRefreshingToken = refreshingToken[file.name] === true;
+  const isRefreshTokenLocked = file.refresh_token_locked === true || file.refreshTokenLocked === true;
+  const isLockUpdating = lockUpdating[file.name] === true;
   const showModelsButton = !isRuntimeOnly || isAistudio;
   const typeColor = getTypeColor(file.type || 'unknown', resolvedTheme);
   const typeLabel = getTypeLabel(t, file.type || 'unknown');
@@ -283,10 +291,36 @@ export function AuthFileCard(props: AuthFileCardProps) {
                     <Button
                       variant="secondary"
                       size="sm"
+                      onClick={() => onToggleRefreshTokenLock(file, !isRefreshTokenLocked)}
+                      className={`${styles.iconButton} ${
+                        isRefreshTokenLocked
+                          ? styles.refreshTokenLockButtonLocked
+                          : styles.refreshTokenLockButtonUnlocked
+                      }`}
+                      title={
+                        isRefreshTokenLocked
+                          ? t('auth_files.refresh_rt_unlock_button', { defaultValue: 'Unlock RT' })
+                          : t('auth_files.refresh_rt_lock_button', { defaultValue: 'Lock RT' })
+                      }
+                      disabled={disableControls || isLockUpdating}
+                    >
+                      {isLockUpdating ? (
+                        <LoadingSpinner size={14} />
+                      ) : isRefreshTokenLocked ? (
+                        <IconLock className={styles.actionIcon} size={16} />
+                      ) : (
+                        <IconUnlock className={styles.actionIcon} size={16} />
+                      )}
+                    </Button>
+                  )}
+                  {isCodex && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       onClick={() => onRefreshToken(file)}
                       className={styles.iconButton}
                       title={t('auth_files.refresh_rt_button', { defaultValue: 'Refresh RT' })}
-                      disabled={disableControls || isRefreshingToken}
+                      disabled={disableControls || isRefreshingToken || isRefreshTokenLocked}
                     >
                       {isRefreshingToken ? (
                         <LoadingSpinner size={14} />

@@ -116,6 +116,8 @@ export function AuthFilesPage() {
     deleting,
     deletingAll,
     refreshingToken,
+    refreshingAllTokens,
+    lockUpdating,
     statusUpdating,
     batchStatusUpdating,
     fileInputRef,
@@ -126,6 +128,8 @@ export function AuthFilesPage() {
     handleDeleteAll,
     handleDownload,
     handleRefreshToken,
+    handleRefreshAllTokens,
+    handleRefreshTokenLockToggle,
     handleStatusToggle,
     toggleSelect,
     selectAllVisible,
@@ -672,6 +676,15 @@ export function AuthFilesPage() {
               {t('common.refresh')}
             </Button>
             <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleRefreshAllTokens}
+              disabled={disableControls || loading || refreshingAllTokens}
+              loading={refreshingAllTokens}
+            >
+              {t('auth_files.refresh_all_rt_button', { defaultValue: '刷新全部RT' })}
+            </Button>
+            <Button
               size="sm"
               onClick={handleUploadClick}
               disabled={disableControls || uploading}
@@ -827,6 +840,7 @@ export function AuthFilesPage() {
                     disableControls={disableControls}
                     deleting={deleting}
                     refreshingToken={refreshingToken}
+                    lockUpdating={lockUpdating}
                     statusUpdating={statusUpdating}
                     quotaFilterType={quotaFilterType}
                     keyStats={keyStats}
@@ -834,6 +848,7 @@ export function AuthFilesPage() {
                     onShowModels={showModels}
                     onDownload={handleDownload}
                     onRefreshToken={handleRefreshToken}
+                    onToggleRefreshTokenLock={handleRefreshTokenLockToggle}
                     onOpenPrefixProxyEditor={openPrefixProxyEditor}
                     onDelete={handleDelete}
                     onToggleStatus={handleStatusToggle}
