@@ -16,7 +16,12 @@ import {
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
 import type { AuthFileItem } from '@/types';
 import { resolveAuthProvider } from '@/utils/quota';
-import { calculateStatusBarData, normalizeAuthIndex, type KeyStats } from '@/utils/usage';
+import {
+  normalizeRecentRequestAuthIndex,
+  normalizeRecentRequestBuckets,
+  normalizeUsageTotal,
+  statusBarDataFromRecentRequests,
+} from '@/utils/recentRequests';
 import { formatFileSize } from '@/utils/format';
 import {
   QUOTA_PROVIDER_TYPES,
@@ -27,7 +32,6 @@ import {
   getTypeLabel,
   isRuntimeOnlyAuthFile,
   parsePriorityValue,
-  resolveAuthFileStats,
   type QuotaProviderType,
   type ResolvedTheme,
 } from '@/features/authFiles/constants';
@@ -48,7 +52,6 @@ export type AuthFileCardProps = {
   lockUpdating: Record<string, boolean>;
   statusUpdating: Record<string, boolean>;
   quotaFilterType: QuotaProviderType | null;
-  keyStats: KeyStats;
   statusBarCache: Map<string, AuthFileStatusBarData>;
   onShowModels: (file: AuthFileItem) => void;
   onDownload: (name: string) => void;
@@ -79,7 +82,6 @@ export function AuthFileCard(props: AuthFileCardProps) {
     lockUpdating,
     statusUpdating,
     quotaFilterType,
-    keyStats,
     statusBarCache,
     onShowModels,
     onDownload,
@@ -91,7 +93,11 @@ export function AuthFileCard(props: AuthFileCardProps) {
     onToggleSelect,
   } = props;
 
-  const fileStats = resolveAuthFileStats(file, keyStats);
+  const recentBuckets = normalizeRecentRequestBuckets(file.recent_requests ?? file.recentRequests);
+  const fileStats = {
+    success: normalizeUsageTotal(file.success),
+    failure: normalizeUsageTotal(file.failed),
+  };
   const isRuntimeOnly = isRuntimeOnlyAuthFile(file);
   const isAistudio = (file.type || '').toLowerCase() === 'aistudio';
   const isCodex = ((file.type || file.provider || '') as string).toLowerCase() === 'codex';
@@ -122,9 +128,10 @@ export function AuthFileCard(props: AuthFileCardProps) {
               : '';
 
   const rawAuthIndex = file['auth_index'] ?? file.authIndex;
-  const authIndexKey = normalizeAuthIndex(rawAuthIndex);
+  const authIndexKey = normalizeRecentRequestAuthIndex(rawAuthIndex);
   const statusData =
-    (authIndexKey && statusBarCache.get(authIndexKey)) || calculateStatusBarData([]);
+    (authIndexKey && statusBarCache.get(authIndexKey)) ||
+    statusBarDataFromRecentRequests(recentBuckets);
   const rawStatusMessage = getAuthFileStatusMessage(file);
   const hasStatusWarning =
     Boolean(rawStatusMessage) && !HEALTHY_STATUS_MESSAGES.has(rawStatusMessage.toLowerCase());

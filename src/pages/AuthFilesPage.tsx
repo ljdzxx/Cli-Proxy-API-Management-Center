@@ -48,7 +48,6 @@ import { useAuthFilesData } from '@/features/authFiles/hooks/useAuthFilesData';
 import { useAuthFilesModels } from '@/features/authFiles/hooks/useAuthFilesModels';
 import { useAuthFilesOauth } from '@/features/authFiles/hooks/useAuthFilesOauth';
 import { useAuthFilesPrefixProxyEditor } from '@/features/authFiles/hooks/useAuthFilesPrefixProxyEditor';
-import { useAuthFilesStats } from '@/features/authFiles/hooks/useAuthFilesStats';
 import { useAuthFilesStatusBarCache } from '@/features/authFiles/hooks/useAuthFilesStatusBarCache';
 import {
   isAuthFilesSortMode,
@@ -105,7 +104,6 @@ export function AuthFilesPage() {
   const previousSelectionCountRef = useRef(0);
   const selectionCountRef = useRef(0);
 
-  const { keyStats, usageDetails, loadKeyStats, refreshKeyStats } = useAuthFilesStats();
   const {
     files,
     selectedFiles,
@@ -138,9 +136,9 @@ export function AuthFilesPage() {
     batchDownload,
     batchSetStatus,
     batchDelete,
-  } = useAuthFilesData({ refreshKeyStats });
+  } = useAuthFilesData();
 
-  const statusBarCache = useAuthFilesStatusBarCache(files, usageDetails);
+  const statusBarCache = useAuthFilesStatusBarCache(files);
 
   const {
     excluded,
@@ -181,7 +179,6 @@ export function AuthFilesPage() {
   } = useAuthFilesPrefixProxyEditor({
     disableControls: connectionStatus !== 'connected',
     loadFiles,
-    loadKeyStats: refreshKeyStats,
   });
 
   const disableControls = connectionStatus !== 'connected';
@@ -332,22 +329,21 @@ export function AuthFilesPage() {
   );
 
   const handleHeaderRefresh = useCallback(async () => {
-    await Promise.all([loadFiles(), refreshKeyStats(), loadExcluded(), loadModelAlias()]);
-  }, [loadFiles, refreshKeyStats, loadExcluded, loadModelAlias]);
+    await Promise.all([loadFiles(), loadExcluded(), loadModelAlias()]);
+  }, [loadFiles, loadExcluded, loadModelAlias]);
 
   useHeaderRefresh(handleHeaderRefresh);
 
   useEffect(() => {
     if (!isCurrentLayer) return;
     loadFiles();
-    void loadKeyStats().catch(() => {});
     loadExcluded();
     loadModelAlias();
-  }, [isCurrentLayer, loadFiles, loadKeyStats, loadExcluded, loadModelAlias]);
+  }, [isCurrentLayer, loadFiles, loadExcluded, loadModelAlias]);
 
   useInterval(
     () => {
-      void refreshKeyStats().catch(() => {});
+      void loadFiles().catch(() => {});
     },
     isCurrentLayer ? 240_000 : null
   );
@@ -843,7 +839,6 @@ export function AuthFilesPage() {
                     lockUpdating={lockUpdating}
                     statusUpdating={statusUpdating}
                     quotaFilterType={quotaFilterType}
-                    keyStats={keyStats}
                     statusBarCache={statusBarCache}
                     onShowModels={showModels}
                     onDownload={handleDownload}
