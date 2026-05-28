@@ -11,6 +11,7 @@ import {
   getTypeLabel,
   hasAuthFileStatusMessage,
   isRuntimeOnlyAuthFile,
+  normalizeProviderKey,
 } from '@/features/authFiles/constants';
 
 type DeleteAllOptions = {
@@ -318,7 +319,12 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
             } else {
               const filesToDelete = files.filter((file) => {
                 if (isRuntimeOnlyAuthFile(file)) return false;
-                if (isFiltered && file.type !== filter) return false;
+                if (
+                  isFiltered &&
+                  normalizeProviderKey(String(file.type ?? file.provider ?? '')) !== filter
+                ) {
+                  return false;
+                }
                 if (isProblemOnly && !hasAuthFileStatusMessage(file)) return false;
                 if (isDisabledOnly && file.disabled !== true) return false;
                 return true;
@@ -444,7 +450,6 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       try {
         const res = await authFilesApi.refreshToken(item);
         await loadFiles();
-        await refreshKeyStats();
         showNotification(
           res.refresh_token_rotated
             ? t('auth_files.refresh_rt_success_rotated', {
@@ -471,7 +476,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
         refreshTokenPendingRef.current.delete(name);
       }
     },
-    [loadFiles, refreshKeyStats, showNotification, t]
+    [loadFiles, showNotification, t]
   );
 
   const handleRefreshAllTokens = useCallback(async () => {
@@ -501,7 +506,6 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       }
 
       await loadFiles();
-      await refreshKeyStats();
 
       showNotification(
         t('auth_files.refresh_all_rt_done', {
@@ -523,7 +527,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
       setRefreshingAllTokens(false);
       refreshAllTokenPendingRef.current = false;
     }
-  }, [loadFiles, refreshKeyStats, showNotification, t, wait]);
+  }, [loadFiles, showNotification, t, wait]);
 
   const handleRefreshTokenLockToggle = useCallback(
     async (item: AuthFileItem, locked: boolean) => {
