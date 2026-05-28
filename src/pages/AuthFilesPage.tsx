@@ -40,6 +40,10 @@ import {
   type ResolvedTheme,
 } from '@/features/authFiles/constants';
 import { AuthFileCard } from '@/features/authFiles/components/AuthFileCard';
+import {
+  AuthFilesBatchFieldsModal,
+  type AuthFilesBatchFieldsModalProps,
+} from '@/features/authFiles/components/AuthFilesBatchFieldsModal';
 import { AuthFileModelsModal } from '@/features/authFiles/components/AuthFileModelsModal';
 import { AuthFilesPrefixProxyEditorModal } from '@/features/authFiles/components/AuthFilesPrefixProxyEditorModal';
 import { OAuthExcludedCard } from '@/features/authFiles/components/OAuthExcludedCard';
@@ -75,6 +79,42 @@ const buildWildcardSearch = (value: string): RegExp | null => {
   return new RegExp(pattern, 'i');
 };
 
+const parseHTTPStatusFilter = (value: string): number | null => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isInteger(parsed) || parsed < 100 || parsed > 599) return null;
+  return parsed;
+};
+
+const authFileLastErrorHTTPStatus = (file: Record<string, unknown>): number | null => {
+  const direct = file.last_error_http_status ?? file.lastErrorHttpStatus;
+  if (typeof direct === 'number' && Number.isInteger(direct)) return direct;
+  if (typeof direct === 'string') {
+    const parsed = Number(direct.trim());
+    if (Number.isInteger(parsed)) return parsed;
+  }
+  const snakeError = file.last_error;
+  if (snakeError && typeof snakeError === 'object' && !Array.isArray(snakeError)) {
+    const value = (snakeError as Record<string, unknown>).http_status;
+    if (typeof value === 'number' && Number.isInteger(value)) return value;
+    if (typeof value === 'string') {
+      const parsed = Number(value.trim());
+      if (Number.isInteger(parsed)) return parsed;
+    }
+  }
+  const camelError = file.lastError;
+  if (camelError && typeof camelError === 'object' && !Array.isArray(camelError)) {
+    const value = (camelError as Record<string, unknown>).httpStatus;
+    if (typeof value === 'number' && Number.isInteger(value)) return value;
+    if (typeof value === 'string') {
+      const parsed = Number(value.trim());
+      if (Number.isInteger(parsed)) return parsed;
+    }
+  }
+  return null;
+};
+
 export function AuthFilesPage() {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
@@ -87,6 +127,7 @@ export function AuthFilesPage() {
   const [filter, setFilter] = useState<'all' | string>('all');
   const [problemOnly, setProblemOnly] = useState(false);
   const [disabledOnly, setDisabledOnly] = useState(false);
+  const [errorStatus, setErrorStatus] = useState('');
   const [compactMode, setCompactMode] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -98,6 +139,8 @@ export function AuthFilesPage() {
   const [viewMode, setViewMode] = useState<'diagram' | 'list'>('list');
   const [sortMode, setSortMode] = useState<AuthFilesSortMode>('default');
   const [batchActionBarVisible, setBatchActionBarVisible] = useState(false);
+  const [batchFieldsModalOpen, setBatchFieldsModalOpen] = useState(false);
+  const [batchFieldsModalKey, setBatchFieldsModalKey] = useState(0);
   const [uiStateHydrated, setUiStateHydrated] = useState(false);
   const floatingBatchActionsRef = useRef<HTMLDivElement>(null);
   const batchActionAnimationRef = useRef<AnimationPlaybackControlsWithThen | null>(null);
@@ -118,6 +161,7 @@ export function AuthFilesPage() {
     lockUpdating,
     statusUpdating,
     batchStatusUpdating,
+    batchFieldsUpdating,
     fileInputRef,
     loadFiles,
     handleUploadClick,
@@ -135,6 +179,7 @@ export function AuthFilesPage() {
     deselectAll,
     batchDownload,
     batchSetStatus,
+    batchPatchFields,
     batchDelete,
   } = useAuthFilesData();
 
@@ -207,6 +252,9 @@ export function AuthFilesPage() {
       if (typeof persisted.disabledOnly === 'boolean') {
         setDisabledOnly(persisted.disabledOnly);
       }
+      if (typeof persisted.errorStatus === 'string') {
+        setErrorStatus(persisted.errorStatus);
+      }
       if (typeof persistedCompactMode !== 'boolean' && typeof persisted.compactMode === 'boolean') {
         setCompactMode(persisted.compactMode);
       }
@@ -247,6 +295,7 @@ export function AuthFilesPage() {
       filter,
       problemOnly,
       disabledOnly,
+      errorStatus,
       compactMode,
       search,
       page,
@@ -259,6 +308,7 @@ export function AuthFilesPage() {
   }, [
     compactMode,
     disabledOnly,
+    errorStatus,
     filter,
     page,
     pageSize,
@@ -358,13 +408,21 @@ export function AuthFilesPage() {
   }, [files]);
 
   const filesMatchingStatusFilters = useMemo(
-    () =>
-      files.filter((file) => {
+    () => {
+      const parsedErrorStatus = parseHTTPStatusFilter(errorStatus);
+      return files.filter((file) => {
         if (problemOnly && !hasAuthFileStatusMessage(file)) return false;
         if (disabledOnly && file.disabled !== true) return false;
+        if (
+          parsedErrorStatus !== null &&
+          authFileLastErrorHTTPStatus(file) !== parsedErrorStatus
+        ) {
+          return false;
+        }
         return true;
-      }),
-    [disabledOnly, files, problemOnly]
+      });
+    },
+    [disabledOnly, errorStatus, files, problemOnly]
   );
 
   const sortOptions = useMemo(
@@ -451,6 +509,16 @@ export function AuthFilesPage() {
     selectedNames.length === 0 ||
     batchStatusUpdating ||
     selectedHasStatusUpdating;
+
+  const handleBatchFieldsSave: AuthFilesBatchFieldsModalProps['onSave'] = useCallback(
+    async (fields) => {
+      const result = await batchPatchFields(selectedNames, fields);
+      if (result) {
+        setBatchFieldsModalOpen(false);
+      }
+    },
+    [batchPatchFields, selectedNames]
+  );
 
   const copyTextWithNotification = useCallback(
     async (text: string) => {
@@ -804,6 +872,17 @@ export function AuthFilesPage() {
                       />
                     </div>
                     <div className={styles.filterToggleCard}>
+                      <Input
+                        label={t('auth_files.error_status_filter_label')}
+                        value={errorStatus}
+                        placeholder={t('auth_files.error_status_filter_placeholder')}
+                        onChange={(e) => {
+                          setErrorStatus(e.target.value);
+                          setPage(1);
+                        }}
+                      />
+                    </div>
+                    <div className={styles.filterToggleCard}>
                       <ToggleSwitch
                         checked={compactMode}
                         onChange={(value) => setCompactMode(value)}
@@ -938,6 +1017,19 @@ export function AuthFilesPage() {
         onChange={handlePrefixProxyChange}
       />
 
+      <AuthFilesBatchFieldsModal
+        key={batchFieldsModalKey}
+        open={batchFieldsModalOpen}
+        selectedCount={selectedNames.length}
+        disableControls={disableControls}
+        saving={batchFieldsUpdating}
+        onClose={() => {
+          if (batchFieldsUpdating) return;
+          setBatchFieldsModalOpen(false);
+        }}
+        onSave={handleBatchFieldsSave}
+      />
+
       {batchActionBarVisible && typeof document !== 'undefined'
         ? createPortal(
             <div className={styles.batchActionContainer} ref={floatingBatchActionsRef}>
@@ -982,6 +1074,18 @@ export function AuthFilesPage() {
                     disabled={disableControls || selectedNames.length === 0}
                   >
                     {t('auth_files.batch_download')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setBatchFieldsModalKey((value) => value + 1);
+                      setBatchFieldsModalOpen(true);
+                    }}
+                    disabled={disableControls || selectedNames.length === 0 || batchFieldsUpdating}
+                    loading={batchFieldsUpdating}
+                  >
+                    {t('auth_files.batch_fields_button')}
                   </Button>
                   <Button
                     size="sm"

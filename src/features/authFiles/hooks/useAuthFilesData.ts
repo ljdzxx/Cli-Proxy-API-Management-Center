@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { authFilesApi } from '@/services/api';
+import { authFilesApi, type AuthFileBatchFieldsJob, type AuthFileFieldsPatch } from '@/services/api';
 import { apiClient } from '@/services/api/client';
 import { useNotificationStore } from '@/stores';
 import type { AuthFileItem } from '@/types';
@@ -37,6 +37,7 @@ export type UseAuthFilesDataResult = {
   lockUpdating: Record<string, boolean>;
   statusUpdating: Record<string, boolean>;
   batchStatusUpdating: boolean;
+  batchFieldsUpdating: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
   loadFiles: () => Promise<void>;
   handleUploadClick: () => void;
@@ -54,6 +55,10 @@ export type UseAuthFilesDataResult = {
   deselectAll: () => void;
   batchDownload: (names: string[]) => Promise<void>;
   batchSetStatus: (names: string[], enabled: boolean) => Promise<void>;
+  batchPatchFields: (
+    names: string[],
+    fields: AuthFileFieldsPatch
+  ) => Promise<AuthFileBatchFieldsJob | null>;
   batchDelete: (names: string[]) => void;
 };
 
@@ -72,10 +77,12 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const [lockUpdating, setLockUpdating] = useState<Record<string, boolean>>({});
   const [statusUpdating, setStatusUpdating] = useState<Record<string, boolean>>({});
   const [batchStatusUpdating, setBatchStatusUpdating] = useState(false);
+  const [batchFieldsUpdating, setBatchFieldsUpdating] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const batchStatusPendingRef = useRef(false);
+  const batchFieldsPendingRef = useRef(false);
   const refreshTokenPendingRef = useRef(new Set<string>());
   const refreshAllTokenPendingRef = useRef(false);
   const selectionCount = selectedFiles.size;
@@ -756,6 +763,73 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     [showNotification, t]
   );
 
+  const batchPatchFields = useCallback(
+    async (
+      names: string[],
+      fields: AuthFileFieldsPatch
+    ): Promise<AuthFileBatchFieldsJob | null> => {
+      if (batchFieldsPendingRef.current) return null;
+
+      const uniqueNames = Array.from(new Set(names));
+      if (uniqueNames.length === 0) return null;
+      if (Object.keys(fields).length === 0) return null;
+
+      batchFieldsPendingRef.current = true;
+      setBatchFieldsUpdating(true);
+      try {
+        const started = await authFilesApi.patchFieldsBatch(uniqueNames, fields);
+        let job = started.job;
+        const jobId = started.job_id || job?.id;
+        if (!jobId) {
+          throw new Error('missing auth fields job id');
+        }
+
+        showNotification(
+          t('auth_files.batch_fields_started', { count: uniqueNames.length }),
+          'success'
+        );
+
+        for (;;) {
+          job = await authFilesApi.getFieldsBatchJob(jobId);
+          if (job.status !== 'running') break;
+          await wait(1000);
+        }
+        if (!job) {
+          throw new Error('missing auth fields job result');
+        }
+
+        await loadFiles();
+
+        const failedCount = job.failed ?? job.failures?.length ?? 0;
+        if (failedCount === 0) {
+          showNotification(
+            t('auth_files.batch_fields_success', { count: job.updated }),
+            'success'
+          );
+        } else {
+          showNotification(
+            t('auth_files.batch_fields_partial', {
+              success: job.updated,
+              failed: failedCount,
+            }),
+            job.updated > 0 ? 'warning' : 'error'
+          );
+        }
+
+        deselectAll();
+        return job;
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : '';
+        showNotification(`${t('notification.update_failed')}: ${errorMessage}`, 'error');
+        return null;
+      } finally {
+        batchFieldsPendingRef.current = false;
+        setBatchFieldsUpdating(false);
+      }
+    },
+    [deselectAll, loadFiles, showNotification, t, wait]
+  );
+
   const batchDelete = useCallback(
     (names: string[]) => {
       const uniqueNames = Array.from(new Set(names));
@@ -810,6 +884,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     lockUpdating,
     statusUpdating,
     batchStatusUpdating,
+    batchFieldsUpdating,
     fileInputRef,
     loadFiles,
     handleUploadClick,
@@ -827,6 +902,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     deselectAll,
     batchDownload,
     batchSetStatus,
+    batchPatchFields,
     batchDelete,
   };
 }

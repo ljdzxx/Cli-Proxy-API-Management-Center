@@ -1461,6 +1461,41 @@
   box-shadow: 0 0 0 3px rgba($error-color, 0.12);
 }
 
+.batchFieldsHint {
+  padding: $spacing-sm $spacing-md;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 22%, var(--border-color));
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--primary-color) 8%, var(--bg-secondary));
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.batchFieldsRow {
+  display: grid;
+  gap: $spacing-sm;
+  padding: $spacing-md;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-lg;
+  background: var(--bg-secondary);
+
+  :global(.form-group) {
+    margin: 0;
+  }
+}
+
+.batchFieldsInline {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-sm;
+}
+
+@include mobile {
+  .batchFieldsInline {
+    grid-template-columns: 1fr;
+  }
+}
+
 .cardActions {
   display: flex;
   align-items: center;

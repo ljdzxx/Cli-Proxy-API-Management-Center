@@ -17,6 +17,8 @@ export type AuthFileFieldsPatch = {
   priority?: number;
   websockets?: boolean;
   note?: string;
+  rate_limit_max_requests?: number;
+  rate_limit_window_seconds?: number;
 };
 type AuthFileBatchFailure = { name: string; error: string };
 type AuthFileBatchUploadResponse = {
@@ -42,6 +44,22 @@ type AuthFileBatchDeleteResult = {
   deleted: number;
   files: string[];
   failed: AuthFileBatchFailure[];
+};
+export type AuthFileBatchFieldsJob = {
+  id: string;
+  status: 'running' | 'completed' | 'partial' | 'failed' | string;
+  started_at?: string;
+  finished_at?: string;
+  total: number;
+  updated: number;
+  failed: number;
+  files?: string[];
+  failures?: AuthFileBatchFailure[];
+};
+export type AuthFileBatchFieldsStartResponse = {
+  status: string;
+  job_id: string;
+  job?: AuthFileBatchFieldsJob;
 };
 
 export const AUTH_FILE_INVALID_JSON_OBJECT_ERROR = 'AUTH_FILE_INVALID_JSON_OBJECT';
@@ -479,6 +497,25 @@ export const authFilesApi = {
 
   patchFields: (name: string, fields: AuthFileFieldsPatch) =>
     apiClient.patch('/auth-files/fields', { name, ...fields }),
+
+  patchFieldsBatch: async (
+    names: string[],
+    fields: AuthFileFieldsPatch
+  ): Promise<AuthFileBatchFieldsStartResponse> => {
+    const requestedNames = normalizeRequestedAuthFileNames(names);
+    if (requestedNames.length === 0) {
+      return { status: 'accepted', job_id: '' };
+    }
+    return apiClient.patch<AuthFileBatchFieldsStartResponse>('/auth-files/fields/batch', {
+      names: requestedNames,
+      fields,
+    });
+  },
+
+  getFieldsBatchJob: (jobId: string) =>
+    apiClient.get<AuthFileBatchFieldsJob>(
+      `/auth-files/fields/batch/jobs/${encodeURIComponent(jobId)}`
+    ),
 
   uploadFiles: async (files: File[]): Promise<AuthFileBatchUploadResult> => {
     const requestedNames = files.map((file) => file.name);
