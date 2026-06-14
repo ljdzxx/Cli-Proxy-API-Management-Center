@@ -25,6 +25,7 @@ export type PrefixProxyEditorField =
   | 'priority'
   | 'websockets'
   | 'note'
+  | 'excludedModelsText'
   | 'headersText';
 
 export type PrefixProxyEditorFieldValue = string | boolean;
@@ -47,6 +48,8 @@ export type PrefixProxyEditorState = {
   websocketsTouched: boolean;
   note: string;
   noteTouched: boolean;
+  excludedModelsText: string;
+  excludedModelsTouched: boolean;
   headersText: string;
   headersTouched: boolean;
   headersError: string | null;
@@ -165,6 +168,38 @@ const normalizeHeaders = (value: unknown): AuthFileHeaders => {
   }, {});
 };
 
+const normalizeExcludedModels = (value: unknown): string[] => {
+  const values = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  values.forEach((item) => {
+    if (typeof item !== 'string') return;
+    const model = item.trim().toLowerCase();
+    if (!model || seen.has(model)) return;
+    seen.add(model);
+    result.push(model);
+  });
+
+  return result.sort((a, b) => a.localeCompare(b));
+};
+
+const parseExcludedModelsText = (text: string): string[] =>
+  normalizeExcludedModels(text.split(/[,\n\r]+/));
+
+const excludedModelsToText = (models: string[]): string => models.join('\n');
+
+const readExcludedModels = (json: Record<string, unknown>): string[] => {
+  const snakeModels = normalizeExcludedModels(json.excluded_models);
+  if (snakeModels.length > 0) return snakeModels;
+  return normalizeExcludedModels(json['excluded-models']);
+};
+
+const sameStringList = (left: string[], right: string[]): boolean => {
+  if (left.length !== right.length) return false;
+  return left.every((item, index) => item === right[index]);
+};
+
 const buildHeadersPatch = (
   originalHeaders: AuthFileHeaders,
   nextHeaders: AuthFileHeaders
@@ -256,6 +291,14 @@ const buildAuthFileFieldsPatch = (
     }
   }
 
+  if (editor.excludedModelsTouched) {
+    const originalExcludedModels = readExcludedModels(original);
+    const nextExcludedModels = parseExcludedModelsText(editor.excludedModelsText);
+    if (!sameStringList(nextExcludedModels, originalExcludedModels)) {
+      patch.excluded_models = nextExcludedModels;
+    }
+  }
+
   if (editor.providerKey === 'codex' && editor.websocketsTouched) {
     const originalWebsockets = readCodexAuthFileWebsockets(original);
     const nextWebsockets = Boolean(editor.websockets);
@@ -317,6 +360,15 @@ const buildPrefixProxyUpdatedText = (
     } else if ('note' in next) {
       delete next.note;
     }
+  }
+
+  if (patch.excluded_models !== undefined) {
+    if (patch.excluded_models.length > 0) {
+      next.excluded_models = patch.excluded_models;
+    } else {
+      delete next.excluded_models;
+    }
+    delete next['excluded-models'];
   }
 
   applyHeadersPatch(next, patch.headers);
@@ -384,6 +436,8 @@ export function useAuthFilesPrefixProxyEditor(
       websocketsTouched: false,
       note: '',
       noteTouched: false,
+      excludedModelsText: '',
+      excludedModelsTouched: false,
       headersText: '',
       headersTouched: false,
       headersError: null,
@@ -428,6 +482,7 @@ export function useAuthFilesPrefixProxyEditor(
       const priority = parsePriorityValue(json.priority);
       const websockets = providerKey === 'codex' ? readCodexAuthFileWebsockets(json) : false;
       const note = typeof json.note === 'string' ? json.note : '';
+      const excludedModelsText = excludedModelsToText(readExcludedModels(json));
       const headers = json.headers;
       let headersText = '';
       let headersError: string | null = null;
@@ -454,6 +509,8 @@ export function useAuthFilesPrefixProxyEditor(
           websocketsTouched: false,
           note,
           noteTouched: false,
+          excludedModelsText,
+          excludedModelsTouched: false,
           headersText,
           headersTouched: false,
           headersError,
@@ -483,6 +540,9 @@ export function useAuthFilesPrefixProxyEditor(
         return { ...prev, websockets: Boolean(value), websocketsTouched: true };
       }
       if (field === 'note') return { ...prev, note: String(value), noteTouched: true };
+      if (field === 'excludedModelsText') {
+        return { ...prev, excludedModelsText: String(value), excludedModelsTouched: true };
+      }
       if (field === 'headersText') {
         const headersText = String(value);
         const { errorKey } = parseHeadersText(headersText);

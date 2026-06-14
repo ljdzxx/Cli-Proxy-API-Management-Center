@@ -51,6 +51,18 @@ const parseHeadersText = (
   return { value: parsed as AuthFileHeaders, errorKey: null };
 };
 
+const parseExcludedModelsText = (text: string): string[] => {
+  const seen = new Set<string>();
+  const models: string[] = [];
+  text.split(/[,\n\r]+/).forEach((item) => {
+    const model = item.trim().toLowerCase();
+    if (!model || seen.has(model)) return;
+    seen.add(model);
+    models.push(model);
+  });
+  return models.sort((a, b) => a.localeCompare(b));
+};
+
 export function AuthFilesBatchFieldsModal(props: AuthFilesBatchFieldsModalProps) {
   const { t } = useTranslation();
   const { open, selectedCount, disableControls, saving, onClose, onSave } = props;
@@ -60,6 +72,8 @@ export function AuthFilesBatchFieldsModal(props: AuthFilesBatchFieldsModalProps)
   const [priority, setPriority] = useState('');
   const [headersEnabled, setHeadersEnabled] = useState(false);
   const [headersText, setHeadersText] = useState('');
+  const [excludedModelsEnabled, setExcludedModelsEnabled] = useState(false);
+  const [excludedModelsText, setExcludedModelsText] = useState('');
   const [rateLimitEnabled, setRateLimitEnabled] = useState(false);
   const [rateLimitMaxRequests, setRateLimitMaxRequests] = useState('');
   const [rateLimitWindowSeconds, setRateLimitWindowSeconds] = useState('');
@@ -99,6 +113,9 @@ export function AuthFilesBatchFieldsModal(props: AuthFilesBatchFieldsModalProps)
     if (headersEnabled && headersParseResult.value) {
       next.headers = headersParseResult.value;
     }
+    if (excludedModelsEnabled) {
+      next.excluded_models = parseExcludedModelsText(excludedModelsText);
+    }
     if (rateLimitEnabled) {
       next.rate_limit_max_requests = parsedRateLimitMax;
       next.rate_limit_window_seconds = parsedRateLimitWindow;
@@ -107,6 +124,8 @@ export function AuthFilesBatchFieldsModal(props: AuthFilesBatchFieldsModalProps)
   }, [
     headersEnabled,
     headersParseResult.value,
+    excludedModelsEnabled,
+    excludedModelsText,
     parsedPriority,
     parsedRateLimitMax,
     parsedRateLimitWindow,
@@ -205,6 +224,28 @@ export function AuthFilesBatchFieldsModal(props: AuthFilesBatchFieldsModalProps)
             />
             {headersError && <div className="error-box">{headersError}</div>}
             <div className="hint">{t('auth_files.batch_fields_headers_hint')}</div>
+          </div>
+        </div>
+
+        <div className={styles.batchFieldsRow}>
+          <ToggleSwitch
+            checked={excludedModelsEnabled}
+            onChange={setExcludedModelsEnabled}
+            disabled={saving}
+            ariaLabel={t('auth_files.batch_fields_apply_excluded_models')}
+            label={t('auth_files.batch_fields_apply_excluded_models')}
+          />
+          <div className="form-group">
+            <label>{t('auth_files.excluded_models_label')}</label>
+            <textarea
+              className="input"
+              value={excludedModelsText}
+              placeholder={t('auth_files.excluded_models_placeholder')}
+              rows={5}
+              disabled={!excludedModelsEnabled || disableControls || saving}
+              onChange={(e) => setExcludedModelsText(e.target.value)}
+            />
+            <div className="hint">{t('auth_files.batch_fields_excluded_models_hint')}</div>
           </div>
         </div>
 

@@ -17,6 +17,7 @@ export type AuthFileFieldsPatch = {
   priority?: number;
   websockets?: boolean;
   note?: string;
+  excluded_models?: string[];
   rate_limit_max_requests?: number;
   rate_limit_window_seconds?: number;
 };
