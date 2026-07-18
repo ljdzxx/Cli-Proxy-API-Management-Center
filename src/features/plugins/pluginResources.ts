@@ -46,6 +46,8 @@ export const buildRepositoryURL = (repository: string) => {
 // hosts like "https://github.com.evil.com/router-for-me/..." from being
 // mistaken for the official org.
 export const OFFICIAL_PLUGIN_REPO_PREFIX = 'https://github.com/router-for-me/';
+export const DEFAULT_PLUGIN_STORE_SOURCE_ID = 'official';
+const DEFAULT_PLUGIN_STORE_SOURCE_NAME = 'official';
 
 // Normalize an "owner/repo" slug or repository URL to a bare "owner/repo".
 export const getPluginRepositorySlug = (repository: string): string => {
@@ -62,24 +64,27 @@ export const getPluginRepositorySlug = (repository: string): string => {
 // are both normalized first; anything else (other hosts, look-alike domains,
 // other owners) is untrusted.
 export const isOfficialRepository = (repository: string): boolean =>
-  buildRepositoryURL(repository)
-    .toLowerCase()
-    .startsWith(OFFICIAL_PLUGIN_REPO_PREFIX);
+  buildRepositoryURL(repository).toLowerCase().startsWith(OFFICIAL_PLUGIN_REPO_PREFIX);
 
-// A plugin is official iff its code repository sits under the router-for-me org.
-// Every first-party plugin lives there, so the repository URL is the single
-// source of truth — see isOfficialRepository for the exact match.
+// Both the backend-assigned source identity and repository must be official.
+// A third-party registry can copy repository metadata, so repository alone is
+// insufficient to bypass the third-party installation gate.
 export const isOfficialPlugin = (entry: PluginStoreEntry): boolean =>
+  entry.sourceId.trim().toLowerCase() === DEFAULT_PLUGIN_STORE_SOURCE_ID &&
   isOfficialRepository(entry.repository);
+
+export const isDefaultPluginStoreSource = (
+  entry: Pick<PluginStoreEntry, 'sourceId' | 'sourceName'>
+): boolean =>
+  entry.sourceId.trim().toLowerCase() === DEFAULT_PLUGIN_STORE_SOURCE_ID ||
+  entry.sourceName.trim().toLowerCase() === DEFAULT_PLUGIN_STORE_SOURCE_NAME;
 
 // The string a user must retype to confirm a risky install: the repo slug when
 // available (most faithful to the source), otherwise the plugin id.
 export const getPluginConfirmToken = (entry: PluginStoreEntry): string =>
   getPluginRepositorySlug(entry.repository) || entry.id;
 
-export const collectPluginResourceEntries = (
-  plugins: PluginListEntry[]
-): PluginResourceEntry[] =>
+export const collectPluginResourceEntries = (plugins: PluginListEntry[]): PluginResourceEntry[] =>
   plugins.flatMap((plugin) => {
     if (!plugin.effectiveEnabled) return [];
 

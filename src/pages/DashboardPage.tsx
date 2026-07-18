@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { IconKey, IconBot, IconFileText, IconSatellite } from '@/components/ui/icons';
+import {
+  IconKey,
+  IconBot,
+  IconFileText,
+  IconSatellite,
+  IconSidebarQuickStart,
+} from '@/components/ui/icons';
 import { useAuthStore, useConfigStore, useModelsStore } from '@/stores';
 import { authFilesApi } from '@/services/api';
 import { useApiKeysForModels } from '@/hooks/useApiKeysForModels';
+import { hasApiKeyFunConfig } from '@/features/providers/sponsor';
 import { formatDateValue } from '@/utils/format';
+import { getDashboardModelsStatValue } from '@/utils/dashboard';
 import styles from './DashboardPage.module.scss';
 
 interface QuickStat {
@@ -38,6 +46,7 @@ export function DashboardPage() {
 
   const models = useModelsStore((state) => state.models);
   const modelsLoading = useModelsStore((state) => state.loading);
+  const modelsError = useModelsStore((state) => state.error);
   const fetchModelsFromStore = useModelsStore((state) => state.fetchModels);
 
   const [authFilesCount, setAuthFilesCount] = useState<number | null>(null);
@@ -106,6 +115,7 @@ export function DashboardPage() {
     ? {
         gemini: config.geminiApiKeys?.length ?? 0,
         codex: config.codexApiKeys?.length ?? 0,
+        xai: config.xaiApiKeys?.length ?? 0,
         claude: config.claudeApiKeys?.length ?? 0,
         vertex: config.vertexApiKeys?.length ?? 0,
         openai: config.openaiCompatibility?.length ?? 0,
@@ -114,6 +124,7 @@ export function DashboardPage() {
   const totalProviderKeys = providerStats
     ? Object.values(providerStats).reduce((sum, count) => sum + count, 0)
     : 0;
+  const isApiKeyFunConfigured = hasApiKeyFunConfig(config);
 
   const quickStats: QuickStat[] = [
     {
@@ -134,6 +145,7 @@ export function DashboardPage() {
         ? t('dashboard.provider_keys_detail', {
             gemini: providerStats.gemini,
             codex: providerStats.codex,
+            xai: providerStats.xai,
             claude: providerStats.claude,
             vertex: providerStats.vertex,
             openai: providerStats.openai,
@@ -150,12 +162,23 @@ export function DashboardPage() {
     },
     {
       label: t('dashboard.available_models'),
-      value: modelsLoading ? '-' : models.length,
+      value: getDashboardModelsStatValue(models.length, modelsLoading, modelsError),
       icon: <IconSatellite size={24} />,
       path: '/system',
       loading: modelsLoading,
       sublabel: t('dashboard.available_models_desc'),
     },
+    ...(!isApiKeyFunConfigured
+      ? [
+          {
+            label: t('dashboard.quick_start_card'),
+            value: t('dashboard.quick_start_entry'),
+            icon: <IconSidebarQuickStart size={24} />,
+            path: '/quick-start',
+            sublabel: t('dashboard.quick_start_entry_desc'),
+          },
+        ]
+      : []),
   ];
 
   const routingStrategyRaw = config?.routingStrategy?.trim() || '';
